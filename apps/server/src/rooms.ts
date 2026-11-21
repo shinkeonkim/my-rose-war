@@ -360,6 +360,16 @@ export class Rooms {
 
   // ---------- 무중단 배포: 방 상태 넘겨주기/받기 ----------
 
+  /** 방을 넘겨준 뒤 종료를 기다리는 동안 턴 타이머 정지 (남은 시간은 turnDeadline에 남겨 둠) */
+  freezeTimers() {
+    for (const room of this.rooms.values()) if (room.timer) clearTimeout(room.timer), (room.timer = null);
+  }
+
+  /** 넘기기가 무산됐을 때(새 파드가 못 뜸) 남은 시간으로 타이머 재개 */
+  resumeTimers(now = Date.now()) {
+    for (const room of this.rooms.values()) if (room.turnDeadline) this.resetTimer(room, room.turnDeadline - now);
+  }
+
   /** 모든 방을 JSON으로 (타이머는 남은 시간으로, 암호 해시는 base64로) */
   exportAll(now = Date.now()): RoomSnapshot[] {
     return [...this.rooms.values()].map((r) => ({

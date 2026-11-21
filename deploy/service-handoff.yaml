@@ -1,0 +1,13 @@
+# 무중단 배포용 내부 Service. Ready인 파드(= 교체 전 이전 파드)만 가리키므로
+# 새 파드는 이 주소로 자기 자신이 아닌 이전 파드에게서 방 상태를 받아온다. Ingress에는 연결하지 않는다.
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-rose-war-handoff
+spec:
+  selector:
+    app.kubernetes.io/name: my-rose-war
+  ports:
+    - name: handoff
+      port: 9090
+      targetPort: handoff

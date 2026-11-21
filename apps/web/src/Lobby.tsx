@@ -4,6 +4,7 @@ import { EmoteEvent, GameConfig, LIMITS, PRESETS, RoomView } from '@rw/engine';
 import { store } from './storage';
 import { EmoteBubble, EmoteButton, EmoteFeed } from './emotes';
 import { BoardPreview, SeatStone, seatName } from './theme';
+import { GuideButton } from './Guide';
 
 type Act = (event: string, payload?: object) => Promise<boolean>;
 
@@ -51,6 +52,7 @@ export function Lobby({
           <div className="code big">{view.code}</div>
         </div>
         <div className="row tight">
+          <GuideButton />
           <EmoteButton onSend={onEmote} />
           {isHost && <CloseRoomButton act={act} />}
           <button className="btn ghost" onClick={onLeave}>

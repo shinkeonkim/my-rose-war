@@ -85,9 +85,11 @@ export const MoveCard = forwardRef<
     onClick?: () => void;
     onPointerEnter?: () => void;
     onPointerLeave?: () => void;
+    onPointerDown?: (e: React.PointerEvent<HTMLElement>) => void;
+    className?: string;
     style?: React.CSSProperties;
   }
->(function MoveCard({ card, size = 'md', kind = null, selected, fresh, title, onClick, onPointerEnter, onPointerLeave, style }, ref) {
+>(function MoveCard({ card, size = 'md', kind = null, selected, fresh, title, onClick, onPointerEnter, onPointerLeave, onPointerDown, className = '', style }, ref) {
   const d = DIRS[card.dir];
   const len = Math.hypot(d.dx, d.dy);
   const ux = d.dx / len;
@@ -108,8 +110,9 @@ export const MoveCard = forwardRef<
     <Tag
       ref={ref}
       type={onClick ? 'button' : undefined}
-      className={`move-card ${size} ${kind ?? ''} ${selected ? 'selected' : ''} ${fresh ? 'fresh' : ''}`}
+      className={`move-card ${size} ${kind ?? ''} ${selected ? 'selected' : ''} ${fresh ? 'fresh' : ''} ${className}`}
       onClick={onClick}
+      onPointerDown={onPointerDown}
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
       title={title}

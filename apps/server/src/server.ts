@@ -4,18 +4,21 @@ import { networkInterfaces } from 'node:os';
 import { extname, join, normalize, resolve } from 'node:path';
 import { Server, Socket } from 'socket.io';
 import { Member, Room, RoomError, Rooms, normalizeCode } from './rooms';
-import { sendToPeer, startHandoffServer } from './handoff';
+import { DRAIN_MESSAGE } from '@rw/engine';
+import { pullFromPeer, serveHandoff } from './handoff';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const STATIC_DIR = resolve(process.env.STATIC_DIR ?? join(process.cwd(), 'apps/web/dist'));
 const PUBLIC_URL = process.env.PUBLIC_URL || null;
-/** 무중단 배포: 내부 포트, 피어를 찾을 헤드리스 서비스 DNS, 내 파드 IP (없으면 넘겨주기 비활성) */
+// ---- 무중단 배포 (방 상태 넘겨주기, apps/server/src/handoff.ts) ----
 const HANDOFF_PORT = Number(process.env.HANDOFF_PORT ?? 0) || 0;
-const HANDOFF_PEER_PORT = Number(process.env.HANDOFF_PEER_PORT ?? 0) || HANDOFF_PORT;
-const HANDOFF_PEERS = process.env.HANDOFF_PEERS || null;
-const POD_IP = process.env.POD_IP || null;
-/** 종료 중: 게임 조작을 막고 방을 새 파드로 넘기는 중 */
+const HANDOFF_PEER = process.env.HANDOFF_PEER || null;
+const HANDOFF_SECRET = process.env.HANDOFF_SECRET || '';
+/** 이전 파드에게서 방을 넘겨받음(또는 없음 확인) */
+let ready = false;
+/** 방을 새 파드로 넘겨줬음 — 상태 변경 요청 거절, 곧 종료 */
 let draining = false;
+let shuttingDown = false;
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -44,6 +47,11 @@ function serveStatic(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', 'http://x');
   if (url.pathname === '/healthz') {
     res.writeHead(200, { 'content-type': 'text/plain' }).end('ok');
+    return;
+  }
+  if (url.pathname === '/readyz') {
+    const ok = ready && !draining;
+    res.writeHead(ok ? 200 : 503, { 'content-type': 'text/plain' }).end(ok ? 'ready' : draining ? 'draining' : 'starting');
     return;
   }
   if (url.pathname === '/api/info') {
@@ -93,10 +101,11 @@ function broadcast(room: Room) {
 
 type Ack = (r: { ok: true; [k: string]: unknown } | { ok: false; error: string }) => void;
 
-function handler<T>(socket: Socket, fn: (payload: T) => Record<string, unknown> | void) {
+/** readOnly가 아니면 상태를 바꾸는 요청 — 배포로 방을 넘기는 중에는 막는다 */
+function handler<T>(socket: Socket, fn: (payload: T) => Record<string, unknown> | void, readOnly = false) {
   return (payload: T, ack?: Ack) => {
     try {
-      if (draining) throw new RoomError('서버 업데이트 중이에요 — 잠시 후 자동으로 다시 연결돼요');
+      if (draining && !readOnly) throw new RoomError(DRAIN_MESSAGE);
       const r = fn(payload ?? ({} as T));
       if (typeof ack === 'function') ack({ ok: true, ...(r ?? {}) });
     } catch (e) {
@@ -156,6 +165,11 @@ io.on('connection', (socket) => {
   socket.on(
     'join',
     handler<{ code: string; name: string; password?: string; token?: string; spectator?: boolean }>(socket, (p) => {
+      if (draining) {
+        // 교체 중에는 기존 참가자의 재접속만 받는다 (상태가 바뀌지 않음)
+        const known = typeof p.token === 'string' && rooms.rooms.get(normalizeCode(p.code))?.members.some((m) => m.token === p.token);
+        if (!known) throw new RoomError(DRAIN_MESSAGE);
+      }
       const data = socket.data as SocketData;
       const now = Date.now();
       data.failedJoins = data.failedJoins.filter((t) => now - t < 60_000);
@@ -174,7 +188,7 @@ io.on('connection', (socket) => {
         data.failedJoins.push(now);
         throw e;
       }
-    }),
+    }, true),
   );
 
   /** 입장 전에 방 존재/암호 여부 확인 */
@@ -188,7 +202,7 @@ io.on('connection', (socket) => {
         inGame: !!room.match,
         players: room.members.filter((m) => m.role === 'player').length,
       };
-    }),
+    }, true),
   );
 
   const act = <T>(name: string, fn: (room: Room, member: Member, p: T) => void) =>
@@ -221,7 +235,7 @@ io.on('connection', (socket) => {
     handler<{ id: string }>(socket, (p) => {
       const { room, member } = current(socket);
       io.to(`r:${room.code}`).emit('emote', rooms.emote(room, member, p.id));
-    }),
+    }, true),
   );
 
   socket.on(
@@ -241,28 +255,43 @@ io.on('connection', (socket) => {
 
 setInterval(() => rooms.sweep(), 60_000).unref();
 
-if (HANDOFF_PORT) startHandoffServer(HANDOFF_PORT, (snap) => {
-  const r = rooms.importAll(snap);
-  return r;
-});
-
-async function shutdown(signal: string) {
-  if (draining) return;
-  draining = true;
-  const count = rooms.rooms.size;
-  console.log(`${signal}: 종료 시작 (방 ${count}개)`);
-  if (count && HANDOFF_PEERS && HANDOFF_PEER_PORT) {
-    const to = await sendToPeer({ peersHost: HANDOFF_PEERS, port: HANDOFF_PEER_PORT, selfIp: POD_IP, snapshot: rooms.exportAll(), deadlineMs: 20_000 });
-    console.log(to ? `[handoff] 방 ${count}개를 ${to}로 넘김` : '[handoff] 넘겨받을 파드를 찾지 못함 — 방이 사라집니다');
-  }
-  // 서버 쪽 disconnect가 아니라 연결(transport)을 닫아야 클라이언트가 자동 재연결한다
-  for (const s of io.sockets.sockets.values()) s.conn.close();
-  http.close();
-  setTimeout(() => process.exit(0), 800).unref();
+// 내부 전용 포트: 새 파드가 방 상태를 받아 간다 → 이 파드는 draining (곧 SIGTERM)
+if (HANDOFF_PORT) {
+  serveHandoff(HANDOFF_PORT, HANDOFF_SECRET, () => {
+    draining = true;
+    rooms.freezeTimers();
+    const snap = rooms.exportAll();
+    console.log(`handoff: 방 ${snap.length}개를 새 파드로 넘김 — 종료 대기`);
+    // 보통은 곧 SIGTERM이 온다. 새 파드가 뜨지 못해 안 오면 다시 진행을 받는다
+    setTimeout(() => {
+      if (shuttingDown) return;
+      draining = false;
+      rooms.resumeTimers();
+      console.log('handoff: 종료되지 않아 다시 진행을 받음');
+    }, 60_000).unref();
+    return { rooms: snap };
+  });
 }
-process.on('SIGTERM', () => void shutdown('SIGTERM'));
-process.on('SIGINT', () => void shutdown('SIGINT'));
 
-http.listen(PORT, () => {
+function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  draining = true;
+  console.log(`${signal}: 연결을 끊고 종료 (클라이언트는 새 파드로 자동 재접속)`);
+  // 서버가 socket.disconnect()하면 클라이언트가 재접속하지 않으므로 전송 계층을 닫는다
+  io.engine.close();
+  http.close();
+  setTimeout(() => process.exit(0), 1000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+http.listen(PORT, async () => {
   console.log(`server listening on :${PORT} (static: ${STATIC_DIR})`);
+  // 이전 파드에게서 방을 받아온 뒤에야 Ready
+  if (HANDOFF_PEER) {
+    const body = await pullFromPeer<{ rooms: unknown }>(HANDOFF_PEER, HANDOFF_SECRET);
+    if (body) console.log(`handoff: 이전 파드에서 방 ${rooms.importAll(body.rooms).imported}개를 넘겨받음`);
+  }
+  ready = true;
 });

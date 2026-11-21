@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { EMOTES, EmoteEvent } from '@rw/engine';
+import { EMOTES, EmoteEvent, emoteAnim } from '@rw/engine';
 
 export const emoteText = (id: string) => EMOTES.find((e) => e.id === id)?.text ?? '';
 
@@ -66,8 +66,8 @@ export function EmoteBubble({ e }: { e?: EmoteEvent }) {
   const text = emoteText(e.id);
   const big = [...text].length <= 2;
   return (
-    <span className={`emote-bubble ${big ? 'big' : ''}`} key={e.n} role="status" aria-label={`${e.name}: ${text}`}>
-      {text}
+    <span className={`emote-bubble ${big ? 'big' : ''} ${emoteAnim(e.id) ? `anim-${emoteAnim(e.id)}` : ''}`} key={e.n} role="status" aria-label={`${e.name}: ${text}`}>
+      <span className="emote-inner">{text}</span>
     </span>
   );
 }

@@ -4,6 +4,7 @@ import { CrownIcon, KnightIcon, MoveCard, SeatStone, cardText, seatName, seatVar
 import { CloseRoomButton } from './Lobby';
 import { EmoteBubble, EmoteButton, EmoteFeed } from './emotes';
 import { sound } from './sound';
+import { GuideButton } from './Guide';
 
 type Act = (event: string, payload?: object) => Promise<boolean>;
 type Outcome = ReturnType<typeof playOutcome>;
@@ -165,6 +166,40 @@ export function Game({
     if (!o || !isOutcomeOk(o)) return;
     if (await act('move', { move: { type: 'play', cardId: card.id } })) setSelected(null);
   };
+  // ---- 카드를 보드로 끌어다 놓기 (마우스·터치 공통) ----
+  const [drag, setDrag] = useState<{ card: Card; x: number; y: number; over: boolean } | null>(null);
+  const suppressClick = useRef(0);
+  const overBoard = (x: number, y: number) => !!document.elementFromPoint(x, y)?.closest('.board-frame');
+  const startDrag = (e: React.PointerEvent<HTMLElement>, card: Card) => {
+    if (!myTurn || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const start = { x: e.clientX, y: e.clientY };
+    let dragging = false;
+    const move = (ev: PointerEvent) => {
+      if (!dragging) {
+        if (Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 8) return;
+        dragging = true;
+        setSelected(card.id);
+      }
+      ev.preventDefault();
+      setDrag({ card, x: ev.clientX, y: ev.clientY, over: overBoard(ev.clientX, ev.clientY) });
+    };
+    const end = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      if (!dragging) return;
+      suppressClick.current = Date.now();
+      setDrag(null);
+      if (ev.type !== 'pointerup' || !overBoard(ev.clientX, ev.clientY)) return;
+      const o = outcomes.get(card.id);
+      if (o && isOutcomeOk(o)) play(card);
+      else if (o) warn(o.reason);
+    };
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+  };
+
   const draw = () => {
     if (g.can.draw) return act('move', { move: { type: 'draw' } });
     if (g.status !== 'playing') return;
@@ -174,6 +209,7 @@ export function Game({
   };
 
   const onHandClick = (card: Card) => {
+    if (Date.now() - suppressClick.current < 300) return;
     if (g.status !== 'playing') return;
     if (!myTurn) {
       setSelected(null);
@@ -242,6 +278,7 @@ export function Game({
             {muted ? '🔕' : '🔔'}
           </button>
           {view.hostId === view.you && <CloseRoomButton act={act} small />}
+          <GuideButton className="btn ghost tiny" label="규칙" />
           <button className={`btn ghost tiny ${showAreas ? 'on' : ''}`} aria-pressed={showAreas} onClick={() => setShowAreas((v) => !v)}>
             영역
           </button>
@@ -277,7 +314,7 @@ export function Game({
       <div className="game-layout">
         <section className="board-area">
           <div className="board-fit">
-          <div className="board-frame">
+          <div className={`board-frame ${drag ? (drag.over ? 'drop-on' : 'drop-ready') : ''}`}>
             <div className="grid" role="grid" aria-label={`${g.size}×${g.size} 보드`}>
               {g.board.map((v, i) => {
                 const x = i % g.size;
@@ -413,6 +450,8 @@ export function Game({
                       selected={card.id === selected}
                       title={isOutcomeOk(o) ? (o.kind === 'hero' ? '기사로 상대 돌 뒤집기' : '빈 칸에 돌 놓기') : o.reason}
                       onClick={() => onHandClick(card)}
+                      onPointerDown={(e) => startDrag(e, card)}
+                      className={drag?.card.id === card.id ? 'dragging' : ''}
                       onPointerEnter={() => setHover(card.id)}
                       onPointerLeave={() => setHover((h) => (h === card.id ? null : h))}
                     />
@@ -444,6 +483,11 @@ export function Game({
         </aside>
       </div>
 
+      {drag && (
+        <div className={`drag-ghost ${drag.over ? 'on-target' : ''}`} style={{ left: drag.x, top: drag.y }} aria-hidden>
+          <MoveCard card={drag.card} kind={(() => { const o = outcomes.get(drag.card.id); return o && isOutcomeOk(o) ? o.kind : 'blocked'; })()} />
+        </div>
+      )}
       <EmoteFeed items={seatless} />
       {splash && (
         <div className={`turn-splash ${splash.mine ? 'mine' : ''}`} key={splash.k} aria-hidden>
