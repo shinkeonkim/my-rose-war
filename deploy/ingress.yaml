@@ -1,0 +1,18 @@
+# 내부(tailnet) 확인용. 공개는 Cloudflare Tunnel Public Hostname → http://my-rose-war.my-rose-war.svc.cluster.local:80
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: my-rose-war
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: my-rose-war.homelab.shinkeonkim.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: my-rose-war
+                port:
+                  name: http

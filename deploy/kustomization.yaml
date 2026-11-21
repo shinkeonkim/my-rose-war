@@ -1,0 +1,17 @@
+# ArgoCD(oh-my-homelab 의 helm-charts/apps/my-rose-war.yaml)가 이 디렉터리를 kustomize 로 렌더한다.
+# 시크릿 없음 (방 암호는 런타임 메모리 데이터).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: my-rose-war
+resources:
+- namespace.yaml
+- deployment.yaml
+- service.yaml
+- ingress.yaml
+labels:
+- pairs:
+    app.kubernetes.io/part-of: my-rose-war
+images:
+- name: ghcr.io/shinkeonkim/my-rose-war
+  newName: ghcr.io/shinkeonkim/my-rose-war
+  newTag: latest
