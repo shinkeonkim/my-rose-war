@@ -3,11 +3,17 @@ kind: Deployment
 metadata:
   name: my-rose-war
 spec:
-  # 방/게임 상태를 메모리에 들고 있으므로 반드시 1개. 파드가 2개면 방이 둘로 갈라진다.
-  # 그래서 배포 시에도 Recreate — 재배포하면 진행 중인 게임은 사라진다(새로고침하면 방을 다시 만들어야 함).
+  # 방/게임 상태는 메모리에 있지만 무중단 배포를 한다:
+  # 새 파드가 먼저 Ready → 이전 파드가 SIGTERM을 받으면 모든 방을 새 파드로 넘기고(내부 포트 9090, 헤드리스 서비스로 피어 탐색)
+  # 클라이언트 연결을 끊는다 → 브라우저가 자동 재연결해 같은 방으로 돌아온다. (apps/server/src/handoff.ts)
+  # 평소에는 1개만 — 2개가 상시로 뜨면 방이 둘로 갈라진다.
   replicas: 1
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  minReadySeconds: 3
   selector:
     matchLabels: &labels
       app.kubernetes.io/name: my-rose-war
@@ -21,17 +27,28 @@ spec:
         runAsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
+      # 방 넘겨주기(최대 20초) + 연결 정리 여유
+      terminationGracePeriodSeconds: 40
       containers:
         - name: app
           image: ghcr.io/shinkeonkim/my-rose-war:latest
           ports:
             - name: http
               containerPort: 8080
+            - name: handoff
+              containerPort: 9090
           env:
             # QR/공유 링크에 쓰는 주소 (Cloudflare Tunnel Public Hostname과 맞출 것)
             - { name: PUBLIC_URL, value: "https://my-rose-war.shinkeonkim.com" }
             - { name: MAX_ROOMS, value: "5" } # 동시에 열 수 있는 방 개수
             - { name: ROOM_IDLE_MINUTES, value: "60" } # 모두 나간 뒤 이 시간 동안 유휴면 방 해제
+            # 무중단 배포: 방 상태 넘겨주기
+            - { name: HANDOFF_PORT, value: "9090" }
+            - { name: HANDOFF_PEERS, value: "my-rose-war-handoff" } # 헤드리스 서비스 → 파드 IP 목록
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
           readinessProbe:
             httpGet: { path: /healthz, port: http }
             periodSeconds: 5

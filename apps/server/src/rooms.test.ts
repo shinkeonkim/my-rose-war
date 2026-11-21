@@ -217,4 +217,34 @@ describe('Rooms', () => {
     expect(changed).toHaveBeenCalled();
     vi.useRealTimers();
   });
+
+  it('무중단 배포: 방 상태를 JSON으로 넘겨받아 그대로 이어서 진행', () => {
+    vi.useFakeTimers();
+    const { rooms, room, host, others } = lobby(2, 'pw');
+    rooms.setConfig(room, host, { turnTimerSec: 60 });
+    rooms.start(room, host);
+    const bySeat = [host, others[0]].sort((a, b) => a.seat! - b.seat!);
+    for (let i = 0; i < 6; i++) rooms.move(room, bySeat[room.match!.state.turn], autoMove(room.match!));
+    vi.advanceTimersByTime(15_000);
+    const snap = JSON.parse(JSON.stringify(rooms.exportAll()));
+
+    const next = new Rooms();
+    expect(next.importAll(snap)).toEqual({ imported: 1, skipped: 0 });
+    expect(next.importAll(snap)).toEqual({ imported: 0, skipped: 1 }); // 같은 코드는 중복 등록 안 함
+    const moved = next.get(room.code);
+    expect(moved.match!.state.board).toEqual(room.match!.state.board);
+    expect(moved.members.every((m) => m.connections === 0)).toBe(true);
+    // 토큰으로 재입장 (암호 없이), 남은 타이머 이어받음
+    const back = next.join(room.code, { name: 'x', token: host.token });
+    expect(back.member.id).toBe(host.id);
+    expect(() => next.join(room.code, { name: 'y', password: 'bad' })).toThrow(/틀렸/);
+    next.join(room.code, { name: 'y', password: 'pw' });
+    expect(next.view(moved, back.member).turnRemainingMs).toBe(45_000);
+    // 이어서 끝까지 진행 가능
+    const seats = moved.members.filter((m) => m.seat !== null).sort((a, b) => a.seat! - b.seat!);
+    let guard = 0;
+    while (moved.match!.status === 'playing' && guard++ < 500) next.move(moved, seats[moved.match!.state.turn], autoMove(moved.match!));
+    expect(moved.match!.status).toBe('match-over');
+    vi.useRealTimers();
+  });
 });

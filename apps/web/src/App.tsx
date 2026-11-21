@@ -202,9 +202,21 @@ function RoomPage({ code, onExit }: { code: string; onExit: (msg?: string) => vo
       onExit(typeof reason === 'string' ? reason : '방에서 나갔습니다');
     };
     const onErr = (m: string) => setToast(m);
+    // 연결이 끊겼다가 다시 붙으면(무중단 배포로 새 서버로 옮겨졌을 때 포함) 토큰으로 같은 방에 재입장
+    let wasDown = false;
+    const onDown = () => {
+      wasDown = true;
+    };
     const onReconnect = async () => {
-      if (!store.token(code)) return;
-      const err = await enter({ name: store.name() });
+      if (!wasDown || !store.token(code)) return;
+      wasDown = false;
+      let err: string | null = null;
+      // 새 서버가 방을 막 넘겨받는 중일 수 있어 몇 번 다시 시도
+      for (let i = 0; i < 4; i++) {
+        err = await enter({ name: store.name() });
+        if (!err || !/찾을 수 없|업데이트 중|응답이 없/.test(err)) break;
+        await new Promise((r) => setTimeout(r, 1200));
+      }
       // 서버 재시작 등으로 방이 사라졌으면 멈춘 화면에 남지 말고 처음으로
       if (err) {
         store.setToken(code, null);
@@ -220,13 +232,15 @@ function RoomPage({ code, onExit }: { code: string; onExit: (msg?: string) => vo
     socket.on('room', onRoom);
     socket.on('kicked', onKicked);
     socket.on('error-message', onErr);
-    socket.io.on('reconnect', onReconnect);
+    socket.on('disconnect', onDown);
+    socket.on('connect', onReconnect);
     return () => {
       socket.off('emote', onEmote);
       socket.off('room', onRoom);
       socket.off('kicked', onKicked);
       socket.off('error-message', onErr);
-      socket.io.off('reconnect', onReconnect);
+      socket.off('disconnect', onDown);
+    socket.off('connect', onReconnect);
     };
   }, [code, enter, onExit]);
 

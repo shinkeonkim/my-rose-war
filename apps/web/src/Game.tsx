@@ -276,6 +276,7 @@ export function Game({
 
       <div className="game-layout">
         <section className="board-area">
+          <div className="board-fit">
           <div className="board-frame">
             <div className="grid" role="grid" aria-label={`${g.size}×${g.size} 보드`}>
               {g.board.map((v, i) => {
@@ -325,12 +326,24 @@ export function Game({
             </div>
             </div>
           </div>
+          </div>
           <div className="ticker small muted" aria-live="polite" key={last?.n ?? -1}>
             {last ? describe(last, names) : g.status === 'playing' ? '가운데 왕관에서 시작합니다' : ' '}
           </div>
         </section>
 
         <aside className="side">
+          {g.status === 'playing' && g.supply > 0 && g.supply <= g.players * 3 && (
+            <div className={`side-alert ${g.supply <= g.players ? 'critical' : ''}`} role="status" key={g.supply}>
+              <span className="sa-icon" aria-hidden>
+                ⏳
+              </span>
+              <span>
+                <b>남은 돌 {g.supply}개</b> · 다 쓰면 판이 끝나요
+                {g.supply <= g.players && <span className="sa-sub">이번 바퀴 안에 끝날 수 있어요 — 큰 영역을 지키세요</span>}
+              </span>
+            </div>
+          )}
           <section className="players">
             {order.map((p) => (
               <PlayerRow
@@ -597,7 +610,6 @@ function TurnBanner({
     if (g.me >= 0 && g.players > 2 && (g.turn + 1) % g.players === g.me) hint += ' · 다음은 내 차례예요';
     if (g.me < 0) hint += ' · 관전 중';
   }
-  const low = g.supply > 0 && g.supply <= g.players * 3;
   const teamNote = g.config.teams && g.me >= 0 ? ` · 같은 팀: ${names.filter((_, i) => i !== g.me && sameSide(true, i, g.me)).join(', ')}` : '';
   return (
     <section className={`turn-banner ${myTurn ? 'mine' : 'theirs'} ${away ? 'away' : ''}`} aria-live="polite" style={seatVars(g.turn)}>
@@ -620,7 +632,6 @@ function TurnBanner({
           )}
         </div>
       </div>
-      {low && <div className="tb-deck-low">남은 돌 {g.supply}개 · 다 쓰면 판이 끝나요</div>}
     </section>
   );
 }

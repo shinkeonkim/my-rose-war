@@ -62,6 +62,18 @@ export interface Room {
 
 export class RoomError extends Error {}
 
+/** 무중단 배포 때 이전 파드 → 새 파드로 넘기는 방 하나 */
+export interface RoomSnapshot {
+  code: string;
+  password: { salt: string; hash: string } | null;
+  hostId: string;
+  config: GameConfig;
+  members: Member[];
+  match: MatchState | null;
+  turnRemainingMs: number | null;
+  idleMs: number;
+}
+
 /** 로비 조작(설정·인원·시작)이 가능한 상태: 게임이 없거나 매치가 끝난 뒤 */
 function lobbyOpen(room: Room): boolean {
   return !room.match || room.match.status === 'match-over';
@@ -331,17 +343,64 @@ export class Rooms {
     this.touch(room);
   }
 
-  private resetTimer(room: Room) {
+  /** ms를 주면 그만큼 남은 타이머로 (무중단 배포 때 이어받기) */
+  private resetTimer(room: Room, ms?: number) {
     this.clearTimer(room);
     const sec = room.match?.config.turnTimerSec ?? 0;
     if (!room.match || room.match.status !== 'playing' || sec <= 0) return;
-    room.turnDeadline = Date.now() + sec * 1000;
+    const wait = Math.max(0, ms ?? sec * 1000);
+    room.turnDeadline = Date.now() + wait;
     room.timer = setTimeout(() => {
       room.timer = null;
       this.timeout(room);
       this.onChange(room);
-    }, sec * 1000);
+    }, wait);
     room.timer.unref?.();
+  }
+
+  // ---------- 무중단 배포: 방 상태 넘겨주기/받기 ----------
+
+  /** 모든 방을 JSON으로 (타이머는 남은 시간으로, 암호 해시는 base64로) */
+  exportAll(now = Date.now()): RoomSnapshot[] {
+    return [...this.rooms.values()].map((r) => ({
+      code: r.code,
+      password: r.password ? { salt: r.password.salt.toString('base64'), hash: r.password.hash.toString('base64') } : null,
+      hostId: r.hostId,
+      config: r.config,
+      members: r.members.map((m) => ({ ...m, connections: 0, emoteTimes: [] })),
+      match: r.match,
+      turnRemainingMs: r.turnDeadline ? Math.max(0, r.turnDeadline - now) : null,
+      idleMs: now - r.lastActive,
+    }));
+  }
+
+  /** 넘겨받은 방을 등록. 같은 코드가 이미 있으면 건너뜀. 접속은 모두 끊긴 것으로 시작 (곧 자동 재접속) */
+  importAll(snapshots: unknown, now = Date.now()): { imported: number; skipped: number } {
+    let imported = 0;
+    let skipped = 0;
+    if (!Array.isArray(snapshots)) throw new RoomError('잘못된 스냅샷');
+    for (const s of snapshots as RoomSnapshot[]) {
+      if (!s || typeof s.code !== 'string' || !Array.isArray(s.members) || this.rooms.has(s.code)) {
+        skipped++;
+        continue;
+      }
+      const room: Room = {
+        code: s.code,
+        password: s.password ? { salt: Buffer.from(s.password.salt, 'base64'), hash: Buffer.from(s.password.hash, 'base64') } : null,
+        hostId: s.hostId,
+        config: sanitizeConfig(s.config ?? {}),
+        members: s.members.map((m) => ({ ...m, connections: 0, disconnectedAt: m.disconnectedAt ?? now, emoteTimes: [] })),
+        match: s.match,
+        turnDeadline: null,
+        timer: null,
+        lastActive: now - Math.max(0, Number(s.idleMs) || 0),
+        failedPasswords: [],
+      };
+      this.rooms.set(room.code, room);
+      if (s.turnRemainingMs !== null && s.turnRemainingMs !== undefined) this.resetTimer(room, s.turnRemainingMs);
+      imported++;
+    }
+    return { imported, skipped };
   }
 
   private clearTimer(room: Room) {
