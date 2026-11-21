@@ -2406,3 +2406,20 @@ button.move-card {
   max-height: min(340px, 60dvh);
   overflow-y: auto;
 }
+.paused-notice {
+  display: grid;
+  gap: 4px;
+}
+.paused-score {
+  white-space: nowrap;
+}
+.topbar .btn {
+  white-space: nowrap;
+}
+.topbar.compact .right {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  row-gap: 4px;
+}

@@ -66,6 +66,8 @@ export function Lobby({
         </div>
       )}
 
+      {view.lobby.paused && <PausedNotice view={view} isHost={isHost} />}
+
       <div className="lobby-grid">
         <ShareBox view={view} isHost={isHost} act={act} />
 
@@ -134,7 +136,16 @@ export function Lobby({
           {view.lobby.errors[0] && <div className="warn">{view.lobby.errors[0]}</div>}
         </div>
         {isHost ? (
-          view.lobby.inResults.length > 0 ? (
+          view.lobby.paused ? (
+            <div className="row tight">
+              <button className="btn" disabled={view.lobby.errors.length > 0} onClick={() => act('start')}>
+                새 게임
+              </button>
+              <button className="btn primary" disabled={!!view.lobby.paused.blocked} onClick={() => act('resume')}>
+                이어서 하기
+              </button>
+            </div>
+          ) : view.lobby.inResults.length > 0 ? (
             <div className="row tight">
               <span className="muted small">{view.lobby.inResults.length}명 기다리는 중</span>
               <button className="btn" disabled={view.lobby.errors.length > 0} onClick={() => act('start', { force: true })}>
@@ -154,8 +165,8 @@ export function Lobby({
   );
 }
 
-/** 방장 전용: 두 번 눌러 확인하는 방 닫기 (브라우저 confirm 대화상자 대신 인라인 확인) */
-export function CloseRoomButton({ act, small }: { act: Act; small?: boolean }) {
+/** 두 번 눌러 확인하는 버튼 (브라우저 confirm 대화상자 대신 인라인 확인) */
+function ConfirmButton({ label, warning, onConfirm, small }: { label: string; warning: string; onConfirm: () => void; small?: boolean }) {
   const [confirming, setConfirming] = useState(false);
   useEffect(() => {
     if (!confirming) return;
@@ -164,9 +175,9 @@ export function CloseRoomButton({ act, small }: { act: Act; small?: boolean }) {
   }, [confirming]);
   return confirming ? (
     <span className="confirm-close">
-      <span className="small">모두 나가게 돼요</span>
-      <button className={`btn danger ${small ? 'tiny' : ''}`} onClick={() => act('close')}>
-        방 닫기
+      <span className="small">{warning}</span>
+      <button className={`btn danger ${small ? 'tiny' : ''}`} onClick={onConfirm}>
+        {label}
       </button>
       <button className={`btn ghost ${small ? 'tiny' : ''}`} onClick={() => setConfirming(false)}>
         취소
@@ -174,8 +185,48 @@ export function CloseRoomButton({ act, small }: { act: Act; small?: boolean }) {
     </span>
   ) : (
     <button className={`btn ghost ${small ? 'tiny' : ''}`} onClick={() => setConfirming(true)}>
-      방 닫기
+      {label}
     </button>
+  );
+}
+
+/** 방장 전용: 방 닫기 */
+export function CloseRoomButton({ act, small }: { act: Act; small?: boolean }) {
+  return <ConfirmButton label="방 닫기" warning="모두 나가게 돼요" onConfirm={() => act('close')} small={small} />;
+}
+
+/** 방장 전용: 게임 중지 → 모두 로비로 (설정을 바꾼 뒤 이어서 할 수 있음) */
+export function StopGameButton({ act, small }: { act: Act; small?: boolean }) {
+  return <ConfirmButton label="게임 중지" warning="모두 로비로 가요" onConfirm={() => act('stop')} small={small} />;
+}
+
+/** 중지된 게임 안내: 누적 점수와 이어서 하기 방식 */
+function PausedNotice({ view, isHost }: { view: RoomView; isHost: boolean }) {
+  const p = view.lobby.paused!;
+  const done = p.roundOver ? p.round : p.round - 1;
+  const changed =
+    done === 0
+      ? '설정이 바뀌어서 새 설정으로 1판부터 다시 시작해요 (같은 자리 순서).'
+      : `설정이 바뀌어서 ${p.roundOver ? '' : '진행 중이던 판은 버리고, '}끝난 ${done}판의 점수를 이어 새 설정으로 ${done + 1}판을 시작해요.`;
+  return (
+    <div className="notice paused-notice">
+      <div>
+        ⏸ 방장이 게임을 중지했어요 · <b>
+          {p.round}/{p.rounds}판
+        </b>
+        {p.roundOver ? ' 끝난 뒤' : ' 진행 중'} ·{' '}
+        {p.players.map((x, i) => (
+          <span key={i} className="paused-score">
+            {x.name} <b>{x.total}</b>
+            {i < p.players.length - 1 ? ', ' : ''}
+          </span>
+        ))}
+      </div>
+      <div className="small muted">
+        {p.blocked ? p.blocked : p.sameConfig ? '설정이 그대로라 하던 판을 그대로 이어가요. 규칙을 바꾸고 이어서 할 수도 있어요.' : changed}
+        {isHost ? '' : ' 방장이 이어서 시작하길 기다리는 중이에요.'}
+      </div>
+    </div>
   );
 }
 

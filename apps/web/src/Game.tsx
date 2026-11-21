@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, DIRS, EMPTY, EmoteEvent, GameView, HOLE, LogEntry, RoomView, playOutcome, sameSide, scoreBoard } from '@rw/engine';
 import { CrownIcon, KnightIcon, MoveCard, SeatStone, cardText, seatName, seatVars } from './theme';
-import { CloseRoomButton } from './Lobby';
+import { CloseRoomButton, StopGameButton } from './Lobby';
 import { EmoteBubble, EmoteButton, EmoteFeed } from './emotes';
 import { sound } from './sound';
 import { GuideButton } from './Guide';
@@ -277,6 +277,7 @@ export function Game({
           <button className="btn ghost tiny" aria-label={muted ? '소리 켜기' : '소리 끄기'} onClick={() => sound.setMuted(!muted)}>
             {muted ? '🔕' : '🔔'}
           </button>
+          {view.hostId === view.you && g.status !== 'match-over' && <StopGameButton act={act} small />}
           {view.hostId === view.you && <CloseRoomButton act={act} small />}
           <GuideButton className="btn ghost tiny" label="규칙" />
           <button className={`btn ghost tiny ${showAreas ? 'on' : ''}`} aria-pressed={showAreas} onClick={() => setShowAreas((v) => !v)}>

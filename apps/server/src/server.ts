@@ -229,6 +229,8 @@ io.on('connection', (socket) => {
     rooms.next(r, m, { round: typeof p.round === 'number' ? p.round : undefined, status: typeof p.status === 'string' ? p.status : undefined }),
   );
   act('nudge', (r, m) => rooms.nudge(r, m));
+  act('stop', (r, m) => rooms.stop(r, m));
+  act('resume', (r, m) => rooms.resume(r, m));
 
   socket.on(
     'emote',

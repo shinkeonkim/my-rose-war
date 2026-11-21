@@ -247,4 +247,34 @@ describe('Rooms', () => {
     expect(moved.match!.status).toBe('match-over');
     vi.useRealTimers();
   });
+
+  it('방장이 게임 중지 → 설정 변경 → 이어서 하기', () => {
+    const { rooms, room, host, others } = lobby(2);
+    rooms.setConfig(room, host, { rounds: 3 });
+    rooms.start(room, host);
+    const bySeat = [host, others[0]].sort((a, b) => a.seat! - b.seat!);
+    for (let i = 0; i < 4; i++) rooms.move(room, bySeat[room.match!.state.turn], autoMove(room.match!));
+    const board = [...room.match!.state.board];
+    expect(() => rooms.stop(room, others[0])).toThrow(/방장/);
+    rooms.stop(room, host);
+    expect(room.match).toBeNull();
+    expect(rooms.view(room, host).lobby.paused).toMatchObject({ round: 1, sameConfig: true, blocked: null });
+    // 설정 그대로 → 하던 판 그대로
+    rooms.resume(room, host);
+    expect(room.match!.state.board).toEqual(board);
+    expect(host.seat).toBe(bySeat.indexOf(host));
+    // 다시 중지하고 보드 크기를 바꾸면 새 설정으로 판을 새로 시작
+    rooms.stop(room, host);
+    rooms.setConfig(room, host, { boardSize: 7, stones: 30 });
+    expect(rooms.view(room, host).lobby.paused!.sameConfig).toBe(false);
+    rooms.resume(room, host);
+    expect(room.match!.state.size).toBe(7);
+    expect(room.match!.round).toBe(1);
+    // 플레이어가 바뀌면 이어갈 수 없음
+    rooms.stop(room, host);
+    rooms.join(room.code, { name: '새 사람' });
+    expect(() => rooms.resume(room, host)).toThrow(/그대로 있어야/);
+    rooms.start(room, host); // 새 게임은 가능, 중지한 게임은 버림
+    expect(rooms.view(room, host).lobby.paused).toBeNull();
+  });
 });

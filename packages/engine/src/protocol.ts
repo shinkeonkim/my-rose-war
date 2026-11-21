@@ -31,6 +31,8 @@ export interface RoomView {
     errors: string[];
     /** 아직 결과 화면에 있는 플레이어 이름 (방장이 기다리지 않고 시작 가능) */
     inResults: string[];
+    /** 방장이 중지한 게임 — 이어서 하기 가능 */
+    paused: PausedInfo | null;
   };
   game: GameView | null;
   /** seat → 이름 */
@@ -39,6 +41,20 @@ export interface RoomView {
   turnRemainingMs: number | null;
   /** 현재 차례인 사람이 끊겨서 다른 사람이 대신 진행할 수 있기까지 남은 ms (해당 없으면 null) */
   nudgeInMs: number | null;
+}
+
+export interface PausedInfo {
+  /** 중지 당시 판 (1부터) / 전체 판 수 */
+  round: number;
+  rounds: number;
+  /** 그 판이 이미 끝난 상태였는지 */
+  roundOver: boolean;
+  /** 자리 순서대로 이름과 끝난 판까지의 누적 점수 */
+  players: { name: string; total: number }[];
+  /** 설정이 중지 당시와 같은지 — 같으면 하던 판 그대로, 다르면 끝난 판 점수만 이어 새 판 */
+  sameConfig: boolean;
+  /** 이어갈 수 없는 이유 (없으면 null) */
+  blocked: string | null;
 }
 
 /** 무중단 배포로 서버를 교체하는 동안의 안내 (클라이언트는 이 오류면 잠시 뒤 다시 시도) */

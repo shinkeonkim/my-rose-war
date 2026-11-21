@@ -162,6 +162,30 @@ export function startNextRound(match: MatchState) {
   match.status = 'playing';
 }
 
+/**
+ * 방장이 중지했던 매치를 바뀐 설정으로 이어간다 (my-lost-city와 같은 방식).
+ * 끝난 판 점수·기사 사용은 그대로 두고, 진행 중이던 판은 버린 뒤 새 설정으로 다음 판을 시작한다.
+ */
+export function continueMatch(prev: MatchState, config: GameConfig, rng: () => number = Math.random): MatchState {
+  const done = prev.roundScores.length;
+  if (done >= config.rounds) throw new MoveError(`이미 ${done}판을 마쳤어요. 판 수를 ${done + 1} 이상으로 늘려야 이어갈 수 있어요`);
+  const errors = validateConfig(config, prev.players);
+  if (errors.length) throw new MoveError(errors[0]);
+  const m = { rng: Math.floor(rng() * 4294967296) >>> 0 };
+  const round = done + 1;
+  const state = newRound(config, prev.players, round, m);
+  return {
+    config,
+    players: prev.players,
+    round,
+    status: 'playing',
+    state,
+    roundScores: prev.roundScores.map((r) => [...r]),
+    roundHeroesUsed: prev.roundHeroesUsed.map((r) => [...r]),
+    rng: m.rng,
+  };
+}
+
 // ---------- 규칙 ----------
 
 /** 같은 편인지 (팀전이면 좌석 0·2 / 1·3) */
