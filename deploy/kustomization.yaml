@@ -14,4 +14,4 @@ labels:
 images:
 - name: ghcr.io/shinkeonkim/my-rose-war
   newName: ghcr.io/shinkeonkim/my-rose-war
-  newTag: latest
+  newTag: sha-eb61fcc
