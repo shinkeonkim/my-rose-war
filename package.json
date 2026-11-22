@@ -2,16 +2,21 @@
   "name": "crown-march",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*", "apps/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "dev": "npm run dev -w apps/server & npm run dev -w apps/web",
     "build": "npm run build -w apps/web && npm run build -w apps/server",
     "start": "node apps/server/dist/server.cjs",
     "test": "vitest run",
-    "typecheck": "tsc -p packages/engine && tsc -p apps/server && tsc -p apps/web"
+    "typecheck": "tsc -p packages/engine && tsc -p apps/server && tsc -p apps/web",
+    "media": "node scripts/media/record.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.3",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "playwright": "^1.56.1"
   }
 }

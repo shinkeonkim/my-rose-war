@@ -2423,3 +2423,34 @@ button.move-card {
   justify-content: flex-end;
   row-gap: 4px;
 }
+/* 로비 상단 버튼 줄: 좁은 화면에서 넘치지 않게 (넘치면 휴대폰이 화면을 축소해 게임 화면까지 잘려 보임) */
+.topbar {
+  flex-wrap: wrap;
+}
+.topbar .row.tight {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 6px;
+}
+@media (max-width: 480px) {
+  .topbar .guide-label {
+    display: none;
+  }
+}
+/* 첫 화면: 좁은 휴대폰에서도 가로로 넘치지 않게 */
+.home {
+  grid-template-columns: minmax(0, 1fr);
+}
+.home-card,
+.home-hero {
+  min-width: 0;
+}
+.entry .row input {
+  min-width: 0;
+  width: 100%;
+}
+@media (min-width: 860px) {
+  .home {
+    grid-template-columns: minmax(0, 1.15fr) minmax(340px, 400px);
+  }
+}

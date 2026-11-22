@@ -7,8 +7,8 @@ export function GuideButton({ className = 'btn ghost', label = '게임 방법' }
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button className={className} onClick={() => setOpen(true)}>
-        📖 {label}
+      <button className={className} onClick={() => setOpen(true)} aria-label={label}>
+        📖 <span className="guide-label">{label}</span>
       </button>
       {open && <GuideModal onClose={() => setOpen(false)} />}
     </>
